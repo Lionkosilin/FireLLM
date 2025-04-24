@@ -1,0 +1,4 @@
+kafka-python
+pyyaml
+psycopg2-binary
+sqlalchemy

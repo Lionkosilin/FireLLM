@@ -1,0 +1,8 @@
+models:
+  - name: vlm_model
+    marName: vlm_model.mar
+    defaultVersion: true
+    minWorkers: 1
+    maxWorkers: 2
+    batchSize: 1
+    responseTimeout: 120

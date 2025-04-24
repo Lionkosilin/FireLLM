@@ -1,0 +1,340 @@
+services:
+
+  # Zookeeper (Kafka依赖)
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    container_name: FireLLM_zookeeper
+    restart: always
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - TZ=Asia/Shanghai
+    ports:
+      - "2181:2181"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+
+  kafka:
+    image: bitnami/kafka:3.4
+    container_name: FireLLM_kafka
+    restart: on-failure
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "1234:1234"
+      - "9999:9999"
+    environment:
+      - TZ=Asia/Shanghai
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
+      - KAFKA_BROKER_ID=1
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_JMX_PORT=1099
+      - KAFKA_JMX_HOSTNAME=kafka
+      - JMX_PORT=1099
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka -Dcom.sun.management.jmxremote.rmi.port=9999
+      - JMX_PORT=9999
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - kafka_data:/bitnami/kafka
+      - ./jmx-exporter:/opt/jmx-exporter
+    networks:
+      - firellm-network
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: FireLLM_kafka_exporter
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "9400:1234"
+      - "9308:9308"
+    environment:
+      - TZ=Asia/Shanghai
+      - JMX_PORT=1099
+      - JMX_HOST=kafka
+      - JMX_EXPORTER_PORT=1234
+      - JMX_EXPORTER_CONFIG=/opt/jmx_exporter/kafka.yml
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./jmx-exporter:/opt/jmx_exporter
+    networks:
+      - firellm-network
+    command:
+      - '--kafka.server=kafka:9092'
+
+  postgres:
+    image: postgres:14
+    container_name: FireLLM_postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - TZ=Asia/Shanghai
+      - POSTGRES_USER=firellm
+      - POSTGRES_PASSWORD=firellm123
+      - POSTGRES_DB=sensordata
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - firellm-network
+
+  flink-jobmanager:
+    build:
+      context: ./flink_processor
+      dockerfile: Dockerfile
+      network: host
+    image: pyflink:1.17
+    container_name: FireLLM_flink-jobmanager
+    restart: always
+    command: jobmanager
+    ports:
+      - "8081:8081"
+      - "9249:9249"
+    environment:
+      - TZ=Asia/Shanghai
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address=flink-jobmanager
+        metrics.reporters=prom
+        metrics.reporter.prom.class=org.apache.flink.metrics.prometheus.PrometheusReporter
+        metrics.reporter.prom.host=0.0.0.0
+        metrics.reporter.prom.port=9249
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+      - PYTHONUSERBASE=/opt/flink/.local
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./flink_processor/wheels:/opt/flink/wheels
+      - ./flink_processor:/opt/flink/job
+      - ./flink-libs:/opt/flink/lib
+    networks:
+      - firellm-network
+
+  flink-taskmanager:
+    build:
+      context: ./flink_processor
+      dockerfile: Dockerfile
+      network: host
+    image: pyflink:1.17
+    container_name: FireLLM_flink-taskmanager
+    restart: always
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    ports:
+      - "9250:9249"
+    environment:
+      - TZ=Asia/Shanghai
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address=flink-jobmanager
+        metrics.reporters=prom
+        metrics.reporter.prom.class=org.apache.flink.metrics.prometheus.PrometheusReporter
+        metrics.reporter.prom.host=0.0.0.0
+        metrics.reporter.prom.port=9249
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
+      - PYTHONUSERBASE=/opt/flink/.local
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./flink_processor/wheels:/opt/flink/wheels
+      - ./flink_processor:/opt/flink/job
+      - ./flink-libs:/opt/flink/lib
+    networks:
+      - firellm-network
+
+  flink-job:
+    build:
+      context: ./flink_processor
+      dockerfile: Dockerfile
+      network: host
+    container_name: FireLLM_flink_job
+    depends_on:
+      - flink-jobmanager
+      - kafka
+    environment:
+      - TZ=Asia/Shanghai
+      - FLINK_JOBMANAGER_HOST=flink-jobmanager
+      - FLINK_JOBMANAGER_PORT=6123
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./flink_processor:/opt/flink/job
+    command: ["python", "/opt/flink/job/fire_detection.py"]
+    networks:
+      - firellm-network
+
+  flink-result-processor:
+    build:
+      context: ./data_collector
+      dockerfile: Dockerfile
+      network: host
+    container_name: FireLLM_flink_result_processor
+    depends_on:
+      - kafka
+      - torchserve
+      - postgres
+    environment:
+      - TZ=Asia/Shanghai
+      - RUN_ROLE=flink-processor
+      - SCRIPT=flink_result_consumer.py
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+
+  torchserve:
+    build:
+      context: ./torchserve
+      dockerfile: Dockerfile
+    container_name: FireLLM_torchserve
+    restart: always
+    ports:
+      - "9080:8080"
+      - "9081:8081"
+      - "9082:8082"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:8081/models | jq . >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: FireLLM_prometheus
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+      - '--log.level=debug'
+    networks:
+      - firellm-network
+    privileged: true
+    depends_on:
+      - flink-jobmanager
+      - flink-taskmanager
+      - kafka-exporter
+      - torchserve
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: FireLLM_grafana
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    networks:
+      - firellm-network
+
+  data-producer:
+    build:
+      context: ./data_collector
+      dockerfile: Dockerfile
+    container_name: FireLLM_data_producer
+    depends_on:
+      - kafka
+    environment:
+      - TZ=Asia/Shanghai
+      - RUN_ROLE=producer
+      - SCRIPT=kafka_producer.py
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+
+  data-consumer:
+    build:
+      context: ./data_collector
+      dockerfile: Dockerfile
+      network: host
+    container_name: FireLLM_data_consumer
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      - TZ=Asia/Shanghai
+      - RUN_ROLE=consumer
+      - SCRIPT=kafka_consumer.py
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: FireLLM_postgres_exporter
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - DATA_SOURCE_NAME=postgresql://firellm:firellm123@postgres:5432/sensordata?sslmode=disable
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - postgres
+    ports:
+      - "9187:9187"
+    networks:
+      - firellm-network
+
+  network-tools:
+    image: nicolaka/netshoot
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - firellm-network
+    command: tail -f /dev/null
+
+volumes:
+  postgres_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  kafka_data:
+    driver: local
+  flink_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  grafana-storage:
+
+networks:
+  firellm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

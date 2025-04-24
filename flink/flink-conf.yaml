@@ -1,0 +1,21 @@
+blob.server.port: 6124
+jobmanager.rpc.address: flink-jobmanager
+query.server.port: 6125
+
+# 监控配置
+metrics.reporters: prom
+metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+metrics.reporter.prom.port: 9249
+metrics.reporter.prom.host: 0.0.0.0
+
+# 系统资源监控
+metrics.system-resource: true
+metrics.system-resource-probing.interval: 5000
+metrics.latency.interval: 5000
+
+# JVM指标
+metrics.jvm.gc.time.interval: 5000
+metrics.jvm.thread: true
+metrics.jvm.memory: true
+metrics.jvm.cpu: true
+metrics.jvm.classloader: true

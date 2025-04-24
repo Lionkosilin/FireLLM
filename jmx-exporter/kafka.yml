@@ -1,0 +1,33 @@
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+whitelistObjectNames:
+  - kafka.server:*
+  - kafka.controller:*
+  - kafka.network:*
+  - kafka.log:*
+  - java.lang:type=OperatingSystem
+  - java.lang:type=Runtime
+  - java.lang:type=GarbageCollector,name=*
+  - java.nio:type=BufferPool,name=*
+
+rules:
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>([a-z-]+)
+    name: kafka_$1_$4
+    type: GAUGE
+    labels:
+      type: "$2"
+      name: "$3"
+  
+  - pattern: kafka.(\w+)<type=(.+)><>([a-z-]+)
+    name: kafka_$1_$3
+    type: GAUGE
+    labels:
+      type: "$2"
+
+  - pattern: java.lang<type=OperatingSystem><>(\w+)
+    name: java_lang_OperatingSystem_$1
+    type: GAUGE
+
+  - pattern: java.lang<type=Runtime><>Uptime
+    name: java_lang_Runtime_Uptime
+    type: GAUGE
