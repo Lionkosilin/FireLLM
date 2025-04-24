@@ -1,0 +1,8 @@
+2025-04-21T00:45:55,907 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - s_name_part0=/tmp/.ts.sock, s_name_part1=9000, pid=715624
+2025-04-21T00:45:55,908 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - Listening on port: /tmp/.ts.sock.9000
+2025-04-21T00:45:55,915 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - Successfully loaded /home/ucas/.local/lib/python3.10/site-packages/ts/configs/metrics.yaml.
+2025-04-21T00:45:55,916 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - [PID]715624
+2025-04-21T00:45:55,916 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - Torch worker started.
+2025-04-21T00:45:55,916 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - Python runtime: 3.10.12
+2025-04-21T00:45:55,928 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - Connection accepted: /tmp/.ts.sock.9000.
+2025-04-21T00:45:55,961 [INFO ] W-9000-yolov8_fire_smoke_1.0-stdout MODEL_LOG - model_name: yolov8_fire_smoke, batchSize: 1
