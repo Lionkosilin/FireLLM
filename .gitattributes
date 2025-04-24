@@ -1,2 +1,0 @@
-flink_processor/*.log filter=lfs diff=lfs merge=lfs -text
-flink_processor/wheels/*.tar.gz filter=lfs diff=lfs merge=lfs -text
